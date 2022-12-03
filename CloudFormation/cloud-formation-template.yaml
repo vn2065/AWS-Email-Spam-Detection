@@ -1,0 +1,126 @@
+AWSTemplateFormatVersion: '2010-09-09'
+Description: AWS CloudFormation Email Classification
+Parameters:
+  EndPointName:
+    Description: "Enter SageMaker Endpoint Name"
+    Default: sms-spam-classifier-mxnet-2022-11-23-00-45-18-135-newcf
+    Type: String
+
+  S3BucketName:
+    Description: "Enter S3 Bucket Name to store Emails"
+    Default: email-storage-cloud-formation-cc-vn2065
+    Type: String
+
+  Domain:
+    Type: String
+    Default: emailspamcc22.me
+    Description: Verified Domain
+
+
+Resources:
+  SESRule:
+    Type: 'AWS::SES::ReceiptRule'
+    DependsOn:
+      - S3BucketPolicy
+    Properties:
+      Rule:
+        Name: ReceiptRule1
+        Enabled: true
+        Recipients:
+          - !Ref Domain
+        Actions:
+          - S3Action:
+              BucketName: !Ref S3Bucket
+      RuleSetName: ReceiptRuleSet1
+  SESRuleSet:
+    Type: 'AWS::SES::ReceiptRuleSet'
+    Properties:
+      RuleSetName: ReceiptRuleSet1
+  S3Bucket:
+    Type: 'AWS::S3::Bucket'
+    DependsOn: 
+      - LambdaFunction
+      - LambdaS3Permission 
+    Properties:
+      BucketName: !Ref S3BucketName
+      NotificationConfiguration:
+        LambdaConfigurations:
+          - Event: 's3:ObjectCreated:Put'
+            Function: !GetAtt LambdaFunction.Arn
+  S3BucketPolicy: 
+    Type: AWS::S3::BucketPolicy
+    Properties: 
+      Bucket: 
+        Ref: "S3Bucket"
+      PolicyDocument: 
+        Statement: 
+          - 
+            Action: 
+              - "s3:PutObject"
+            Effect: "Allow"
+            Resource: 
+              Fn::Join: 
+                - ""
+                - 
+                  - "arn:aws:s3:::"
+                  - 
+                    Ref: "S3Bucket"
+                  - "/*"
+            Principal: "*"
+  LambdaFunction:
+    Type: 'AWS::Lambda::Function'
+    DependsOn:
+      - LambdaIamRole
+    Properties:
+      Handler: lambda_function.lambda_handler
+      Role:  !GetAtt LambdaIamRole.Arn
+      Layers:
+        - arn:aws:lambda:us-east-1:668099181075:layer:AWSLambda-Python38-SciPy1x:107
+      Code:
+        S3Bucket: email-classification-cloudformation-cc-vn2065
+        S3Key: ses-s3-email-c86b7fbb-7e63-4f84-83ce-7e0501051c10.zip
+      Runtime: python3.8
+      Environment:
+        Variables:
+          ENDPOINT_NAME: !Ref EndPointName
+      Timeout: 600
+      TracingConfig:
+        Mode: Active
+  LambdaS3Permission:
+    Type: AWS::Lambda::Permission
+    DependsOn: 
+      - LambdaFunction
+    Properties:
+      FunctionName: !GetAtt LambdaFunction.Arn
+      Action: lambda:InvokeFunction
+      Principal: s3.amazonaws.com
+      SourceAccount: !Ref 'AWS::AccountId'
+      SourceArn:
+        Fn::Join: 
+          - ""
+          - 
+            - "arn:aws:s3:::"
+            - 
+              Ref: "S3BucketName"
+  LambdaIamRole:
+    Type: 'AWS::IAM::Role'
+    Properties:
+      RoleName: lambda-role-email-spam
+      AssumeRolePolicyDocument:
+        Version: '2012-10-17'
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - 'sts:AssumeRole'
+      Path: /
+      ManagedPolicyArns:
+        - "arn:aws:iam::aws:policy/service-role/AWSLambdaBasicExecutionRole"
+        - "arn:aws:iam::aws:policy/AmazonS3FullAccess"
+        - "arn:aws:iam::aws:policy/AmazonSESFullAccess"
+        - "arn:aws:iam::aws:policy/AmazonSageMakerFullAccess"
+
+
+
